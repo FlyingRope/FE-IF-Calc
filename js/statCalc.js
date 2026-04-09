@@ -8,6 +8,7 @@ const PROMOTED_NOT_RPOMOTED_EXTRA_CAP = 20;
 const LEVEL_PROMOTION = 10;
 const APTITUDE = 10;
 const FIX = 10000;	// Hack-ish fix for floating point operation
+const STAT_KEYS = [ "HP", "Str", "Mag", "Skl", "Spd", "Lck", "Def", "Res" ];
 
 /*
  *	LevelAttribute
@@ -53,7 +54,7 @@ LevelAttribute.prototype.increaseLevel = function(prev) {
 }
 
 LevelAttribute.prototype.isAtCap = function(extraCap, specialExtraCap) {
-	return ((this.tier1Level == LEVEL_CAP_STANDARD && this.tier2Level == 0 && this.unitClass.tier != "special") || this.tier2Level == (LEVEL_CAP_STANDARD + extraCap + specialExtraCap))
+	return ((this.tier1Level >= LEVEL_CAP_STANDARD && this.tier2Level == 0 && this.unitClass.tier != "special") || this.tier2Level >= (LEVEL_CAP_STANDARD + extraCap + specialExtraCap))
 }
 
 LevelAttribute.prototype.calculateDisplayedLevel = function() {
@@ -81,6 +82,15 @@ var StatCalculator = function() {
 	this.classChanges = [];
 }
 
+StatCalculator.prototype.getBaseStat = function() {
+	return this.character.base[this.baseSet];
+}
+
+StatCalculator.prototype.getBaseClassKey = function() {
+	var baseStat = this.getBaseStat();
+	return (baseStat && baseStat.classKey) ? baseStat.classKey : this.character.baseClass;
+}
+
 
 StatCalculator.prototype.setCharacter = function(character, base) {
 	this.character = db.character[character];
@@ -98,7 +108,7 @@ StatCalculator.prototype.setAptitude = function(val) {
 StatCalculator.prototype.addClassChange = function(level, targetClass) {
 	var newClass = db.classes[targetClass];
 	var latestClassChange = this.getLatestClassChange();
-	var oldClass = (latestClassChange ? latestClassChange.targetClass : db.classes[this.character.baseClass]);
+	var oldClass = (latestClassChange ? latestClassChange.targetClass : db.classes[this.getBaseClassKey()]);
 	var newClassChange = new ClassChange(level, oldClass, newClass);
 	this.classChanges.push(newClassChange)
 }
@@ -121,8 +131,8 @@ StatCalculator.prototype.getAvailableLevelRange = function() {
 			baseLevel -= SPECIAL_LEVEL_MODIFIER;
 		
 	}else {
-		curClass = db.classes[this.character.baseClass];
-		baseLevel = this.character.base[this.baseSet].level;
+		curClass = db.classes[this.getBaseClassKey()];
+		baseLevel = this.getBaseStat().level;
 	}
 	
 	var cap = (curClass.tier == "special" ? LEVEL_CAP_SPECIAL : LEVEL_CAP_STANDARD);
@@ -139,7 +149,7 @@ StatCalculator.prototype.getAvailableLevelRange = function() {
 
 StatCalculator.prototype.getAvaiableClassChange = function(level) {
 	var latestClassChange = this.getLatestClassChange();
-	var curClass = (latestClassChange ? latestClassChange.targetClass : db.classes[this.character.baseClass]);
+	var curClass = (latestClassChange ? latestClassChange.targetClass : db.classes[this.getBaseClassKey()]);
 	
 	var altClass = [];
 	for (var i=0; i<this.character.classSet.length; i++) {
@@ -225,14 +235,15 @@ StatCalculator.prototype.compute = function() {
 	var averageStats = [[]];
 	
 	// Starting level is defined by character base
-	var baseStat = this.character.base[this.baseSet];
-	var startingLevel = new LevelAttribute(db.classes[this.character.baseClass], baseStat.stat);
-	if (db.classes[this.character.baseClass].tier != "tier2")
+	var baseStat = this.getBaseStat();
+	var startingClass = db.classes[this.getBaseClassKey()];
+	var startingLevel = new LevelAttribute(startingClass, baseStat.stat);
+	if (startingClass.tier != "tier2")
 		startingLevel.setInitialLevel(baseStat.level, 0);
 	else
 		startingLevel.setInitialLevel(0, baseStat.level);
 	for (var attr in startingLevel.stat)
-		startingLevel.statCap[attr] = db.classes[this.character.baseClass].maxStat[attr] + this.character.cap[attr];
+		startingLevel.statCap[attr] = startingClass.maxStat[attr] + this.character.cap[attr];
 	averageStats[0].push(startingLevel);
 	var prev = startingLevel;
 	
@@ -247,20 +258,32 @@ StatCalculator.prototype.compute = function() {
 			
 			for (var attr in newClass.base) {
 				thisLevel.statCap[attr] = newClass.maxStat[attr] + this.character.cap[attr];
-				thisLevel.stat[attr] = (prev.stat[attr]*FIX + newClass.base[attr]*FIX - oldClass.base[attr]*FIX)/FIX;
+				// 职业变更时的属性调整：新职业基础值 - 旧职业基础值
+				var baseStatDiff = newClass.base[attr] - oldClass.base[attr];
+				thisLevel.stat[attr] = Math.min(Number(prev.stat[attr]) + baseStatDiff, thisLevel.statCap[attr]);
 			}
 			averageStats[++i] = [];
-		}else {
+		} else {
 			// No change, calculate growth as per normal
 			var thisLevel = new LevelAttribute(prev.unitClass, {});
 			thisLevel.increaseLevel(prev);
+			thisLevel.growthRate = {};
 			
 			for (var attr in this.character.growth) {
-				var growth = (this.character.growth[attr] + prev.unitClass.growth[attr] + this.aptitude);
-				// Does not grow if stat is at cap
-				// The extra multiplication eliminates javascript floating point precision problem
+				// 计算总成长率
+				var totalGrowth = this.character.growth[attr] + prev.unitClass.growth[attr] + this.aptitude;
+				thisLevel.growthRate[attr] = totalGrowth;
+				
+				// 如果已经达到属性上限，则不再增长
 				thisLevel.statCap[attr] = prev.statCap[attr];
-				thisLevel.stat[attr] = Math.min((prev.stat[attr]*FIX + growth*FIX/100)/FIX, thisLevel.statCap[attr]);	
+				if (Number(prev.stat[attr]) >= thisLevel.statCap[attr]) {
+					thisLevel.stat[attr] = prev.stat[attr];
+					continue;
+				}
+				
+				// 计算期望值增长
+				var expectedGrowth = totalGrowth / 100;
+				thisLevel.stat[attr] = Math.min(Number(prev.stat[attr]) + expectedGrowth, thisLevel.statCap[attr]);
 			}
 		}
 		prev = thisLevel;
@@ -268,4 +291,155 @@ StatCalculator.prototype.compute = function() {
 	}
 	
 	return averageStats;
+}
+
+StatCalculator.prototype.calculateChildInheritance = function(options) {
+	if (!options || !options.child)
+		return null;
+
+	var child = db.character[options.child];
+	if (!child || (child.gen != "child" && child.gen != "avatarChild") || !child.varParent)
+		return null;
+
+	var childClass = db.classes[options.childClass];
+	var variableParentClass = db.classes[options.variableParentClass];
+	var fixedParentClass = db.classes[options.fixedParentClass];
+	if (!childClass || !variableParentClass || !fixedParentClass)
+		return null;
+
+	var childLevel = Number(options.childLevel);
+	if (isNaN(childLevel))
+		return null;
+	if (childLevel % 2 != 0)
+		return null;
+
+	var childLevelBounds = this.getDisplayedLevelBoundsForClass(child, options.childClass);
+	if (!childLevelBounds || childLevel < childLevelBounds.min || childLevel > childLevelBounds.max)
+		return null;
+
+	var baseClass = db.classes[child.baseClass];
+	var inheritancePromoteTo = child.getInheritancePromoteTo();
+	var defaultPromotedClass = db.classes[inheritancePromoteTo[0]] || childClass;
+	var promotedClassFilter = {};
+	for (var i=0; i<inheritancePromoteTo.length; i++)
+		promotedClassFilter[inheritancePromoteTo[i]] = true;
+
+	var parsedVariableParentStats = {};
+	var parsedFixedParentStats = {};
+	for (var i=0; i<STAT_KEYS.length; i++) {
+		var attr = STAT_KEYS[i];
+		parsedVariableParentStats[attr] = Number(options.variableParentStats[attr]);
+		parsedFixedParentStats[attr] = Number(options.fixedParentStats[attr]);
+		if (isNaN(parsedVariableParentStats[attr]) || isNaN(parsedFixedParentStats[attr]))
+			return null;
+	}
+
+	var result = {
+		childId : options.child,
+		child : child,
+		childLevel : childLevel,
+		childClassKey : options.childClass,
+		childClass : childClass,
+		fixedParent : db.character[child.fixedParent],
+		fixedParentClass : fixedParentClass,
+		fixedParentStats : parsedFixedParentStats,
+		variableParent : child.varParent,
+		variableParentClass : variableParentClass,
+		variableParentStats : parsedVariableParentStats,
+		defaultPromotedClass : defaultPromotedClass,
+		inheritancePromoteTo : inheritancePromoteTo,
+		stats : {},
+	};
+
+	for (var i=0; i<STAT_KEYS.length; i++) {
+		var attr = STAT_KEYS[i];
+		var derivedGrowth = Math.floor((child.varParent.growth[attr] + child.childGrowth[attr]) / 2);
+		var baseGrowth = derivedGrowth + baseClass.growth[attr];
+		var autolevelLevels = (options.childClass == child.baseClass ? childLevel - child.childBase.level : LEVEL_CAP_STANDARD - child.childBase.level);
+		var autolevelGain = (baseGrowth * autolevelLevels) / 100;
+		var unpromotedCap = baseClass.maxStat[attr] + child.cap[attr];
+		var personalCap = unpromotedCap - baseClass.base[attr];
+		var basePlusLevels = Math.min(Math.round(child.childBase.stat[attr] + autolevelGain), personalCap);
+		var promotedAptitude = (childClass.tier == "tier2" ? this.aptitude : 0);
+		var promotedGrowth = childClass.growth[attr] + derivedGrowth;
+		var promotedAutolevel = (promotedClassFilter[options.childClass] ? (promotedGrowth * (childLevel - 1)) / 100 : 0);
+		var promotedAutolevelRaw = promotedAutolevel;
+		var promotedAptitudeRaw = 0;
+		if (promotedAptitude > 0 && promotedClassFilter[options.childClass]) {
+			promotedAptitudeRaw = (promotedAptitude * (childLevel - 1)) / 100;
+			promotedAutolevelRaw += promotedAptitudeRaw;
+		}
+		var promotedAutolevelApplied = promotedAutolevelRaw;
+		var promotedPersonalBase = Math.round(basePlusLevels + promotedAutolevelApplied);
+		var hypotheticalGrowth = defaultPromotedClass.growth[attr] + derivedGrowth;
+		// Excel row 33 always uses (C4 - 1); the tier split happens earlier in row 22 / row 24.
+		var hypotheticalAutolevelLevels = childLevel - 1;
+		var hypotheticalAutolevel = (hypotheticalGrowth * hypotheticalAutolevelLevels) / 100;
+		var hypotheticalBase = Math.round(basePlusLevels + hypotheticalAutolevel);
+		var variableParentPersonal = parsedVariableParentStats[attr] - variableParentClass.base[attr];
+		var fixedParentPersonal = parsedFixedParentStats[attr] - fixedParentClass.base[attr];
+		var variableParentGap = Math.max(0, variableParentPersonal - hypotheticalBase);
+		var fixedParentGap = Math.max(0, fixedParentPersonal - hypotheticalBase);
+		var inheritanceCap = Math.floor(hypotheticalBase / 10) + 2;
+		var inheritance = Math.floor((variableParentGap + fixedParentGap) / 4);
+		var appliedInheritance = Math.min(inheritance, inheritanceCap);
+		var finalCap = childClass.maxStat[attr] + child.cap[attr];
+		var calculatedStat = Math.min(childClass.base[attr] + promotedPersonalBase + appliedInheritance, finalCap);
+
+		result.stats[attr] = {
+			derivedGrowth : derivedGrowth,
+			baseGrowth : baseGrowth,
+			autolevelGain : autolevelGain,
+			basePlusLevels : basePlusLevels,
+			promotedGrowth : promotedGrowth,
+			promotedAptitude : promotedAptitude,
+			promotedAptitudeRaw : promotedAptitudeRaw,
+			promotedAutolevel : promotedAutolevelRaw,
+			promotedAutolevelApplied : promotedAutolevelApplied,
+			promotedPersonalBase : promotedPersonalBase,
+			hypotheticalGrowth : hypotheticalGrowth,
+			hypotheticalAutolevelLevels : hypotheticalAutolevelLevels,
+			hypotheticalAutolevel : hypotheticalAutolevel,
+			hypotheticalBase : hypotheticalBase,
+			variableParentPersonal : variableParentPersonal,
+			fixedParentPersonal : fixedParentPersonal,
+			variableParentGap : variableParentGap,
+			fixedParentGap : fixedParentGap,
+			inheritanceCap : inheritanceCap,
+			inheritance : inheritance,
+			appliedInheritance : appliedInheritance,
+			finalCap : finalCap,
+			calculatedStat : calculatedStat,
+		};
+	}
+
+	return result;
+}
+
+StatCalculator.prototype.getDisplayedLevelBoundsForClass = function(character, classKey) {
+	var unitClass = db.classes[classKey];
+	if (!character || !unitClass)
+		return null;
+
+	var extraCap = parseInt(this.extraLevel || 0);
+	var specialExtra = (character.promotedNotPromoted ? PROMOTED_NOT_RPOMOTED_EXTRA_CAP : 0);
+
+	if (unitClass.tier == "tier1") {
+		return {
+			min : character.childBase ? character.childBase.level : 1,
+			max : LEVEL_CAP_STANDARD,
+		};
+	}
+
+	if (unitClass.tier == "special") {
+		return {
+			min : SPECIAL_LEVEL_MODIFIER + 1,
+			max : LEVEL_CAP_SPECIAL + extraCap + specialExtra,
+		};
+	}
+
+	return {
+		min : 1,
+		max : LEVEL_CAP_STANDARD + extraCap + specialExtra,
+	};
 }

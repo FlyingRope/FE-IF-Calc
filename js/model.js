@@ -90,10 +90,18 @@ Character.prototype.setParent = function(varParent) {
 	}
 }
 
+Character.prototype.getInheritancePromoteTo = function() {
+	if (this.inheritancePromoteTo)
+		return this.inheritancePromoteTo.slice();
+	if (db.classes[this.baseClass] && db.classes[this.baseClass].promoteTo)
+		return db.classes[this.baseClass].promoteTo.slice();
+	return [];
+}
+
 Character.prototype.evaluateChildStat = function() {
 	var fixedParent = db.character[this.fixedParent];
 	for (var attr in this.childGrowth) {
-		this.growth[attr] = (this.varParent.growth[attr] + this.childGrowth[attr])/2;
+		this.growth[attr] = Math.floor((this.varParent.growth[attr] + this.childGrowth[attr])/2);
 		this.cap[attr] = this.varParent.cap[attr] + fixedParent.cap[attr];
 		if (this.varParent.gen != "child")
 			this.cap[attr]++;
@@ -1468,6 +1476,7 @@ db.character = {
 		fixedParent	: "kamui",
 		childBase	: new BaseStat(10, 7, 3, 6, 8, 8, 9, 5, 5),
 		childGrowth	: new Stat(30, 35, 30, 40, 45, 45, 25, 25),
+		inheritancePromoteTo : [ "nohrNoble", "hoshidoNoble" ],
 	}),
 	
 	shigure : new Character({
@@ -1492,6 +1501,7 @@ db.character = {
 		fixedParent	: "jakob",
 		childBase	: new BaseStat(10, 8, 7, 7, 2, 6, 4, 6, 7),
 		childGrowth	: new Stat(45, 45, 30, 20, 30, 30, 30, 35),
+		inheritancePromoteTo : [ "maid", "strategist" ],
 	}),
 	
 	sophie : new Character({
@@ -1514,8 +1524,8 @@ db.character = {
 		route	: "Children",
 		
 		fixedParent : "kaze",
-		childBase	: new BaseStat(10, 8, 6, 2, 10, 4, 10, 4, 2),
-		childGrowth : new Stat(45, 35, 5, 55, 35, 50, 30, 20),
+		childBase	: new BaseStat(10, 8, 6, 2, 10, 6, 10, 4, 2),
+		childGrowth : new Stat(45, 35, 5, 55, 40, 50, 30, 20),
 	}),
 	
 	shiro : new Character({
@@ -1595,6 +1605,7 @@ db.character = {
 		fixedParent	: "azama",
 		childBase	: new BaseStat(10, 6, 7, 6, 6, 8, 10, 3, 5),
 		childGrowth	: new Stat(45, 40, 35, 45, 50, 50, 30, 20),
+		inheritancePromoteTo : [ "priestess", "onmyoji" ],
 		revParent	: [ "effie", "beruka" ],
 	}),
 	
@@ -1662,6 +1673,7 @@ db.character = {
 		fixedParent	: "benny",
 		childBase	: new BaseStat(10, 8, 7, 0, 6, 4, 7, 6, 7, 4),
 		childGrowth	: new Stat(40, 50, 0, 40, 30, 55, 45, 35),
+		inheritancePromoteTo : [ "general", "greatKnight" ],
 		revParent	: [ "rinkah", "oboro" ],
 	}),
 	
@@ -1727,6 +1739,7 @@ db.character = {
 		fixedParent	: "niles",
 		childBase	: new BaseStat(10, 5, 8, 5, 5, 5, 11, 3, 10),
 		childGrowth	: new Stat(30, 45, 30, 35, 40, 50, 25, 45),
+		inheritancePromoteTo : [ "adventurer", "bowKnight" ],
 		revParent	: [ "setsuna", "oboro" ],
 	}),
 }
