@@ -35,8 +35,13 @@
     "quantile50": "50%",
     "quantile25": "25%",
     "quantile75": "75%",
+    "languageSwitch": "语言",
     "heatmapTip": "将鼠标移到热力图上查看详细信息",
+    "growthDistribution": "成长分布",
+    "beforeChange": "转职前",
+    "afterChange": "转职后",
     "exportPNG": "导出PNG",
+    "pageTitle": "火焰纹章 if: 角色平均属性",
     "inheritanceCalculator": "Inheritance 计算",
     "inheritancePrompt": "选择父母当前职业并输入当前显示属性，计算子代在指定职业与等级下的 Inheritance 与显示值。",
     "inheritancePending": "输入父母当前显示属性后即可计算。",
@@ -208,5 +213,13 @@
     "Ophelia": "欧菲莉亚",
     "Soleil": "索雷优",
     "Nina": "艾波宁"
+  },
+  "route": {
+    "All": "全路线",
+    "Birthright": "白夜",
+    "Conquest": "暗夜",
+    "Revelation": "透魔",
+    "Others": "其他",
+    "Children": "子代"
   }
 } 

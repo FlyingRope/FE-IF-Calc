@@ -35,8 +35,13 @@
     "quantile50": "50%",
     "quantile25": "25%",
     "quantile75": "75%",
+    "languageSwitch": "Language",
     "heatmapTip": "Hover over the heatmap for details",
+    "growthDistribution": "Growth Distribution",
+    "beforeChange": "pre",
+    "afterChange": "post",
     "exportPNG": "Export PNG",
+    "pageTitle": "Fire Emblem Fates: Character Average Stats",
     "inheritanceCalculator": "Inheritance Calculator",
     "inheritancePrompt": "Choose each parent's current class, enter their displayed stats, then calculate the child's Inheritance and displayed stats for a target class and level.",
     "inheritancePending": "Enter both parents' displayed stats to calculate Inheritance.",
@@ -206,5 +211,13 @@
     "Ophelia": "Ophelia",
     "Soleil": "Soleil",
     "Nina": "Nina"
+  },
+  "route": {
+    "All": "All",
+    "Birthright": "Birthright",
+    "Conquest": "Conquest",
+    "Revelation": "Revelation",
+    "Others": "Others",
+    "Children": "Children"
   }
 } 

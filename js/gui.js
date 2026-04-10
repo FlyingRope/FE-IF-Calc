@@ -6,6 +6,23 @@ var inheritanceState = null;
 // 多语言支持
 var langData = null;
 var currentLang = 'zh-CN';
+var LANG_STORAGE_KEY = 'fe-fates-calculator.lang';
+
+function getPreferredLanguage() {
+    try {
+        var savedLang = window.localStorage ? window.localStorage.getItem(LANG_STORAGE_KEY) : null;
+        if (savedLang == 'zh-CN' || savedLang == 'en-US')
+            return savedLang;
+    } catch (err) {}
+    return 'zh-CN';
+}
+
+function savePreferredLanguage(lang) {
+    try {
+        if (window.localStorage)
+            window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch (err) {}
+}
 
 function loadLang(lang, cb) {
     $.getJSON('data/lang.' + lang + '.json', function(data) {
@@ -26,24 +43,41 @@ function tChar(char) {
 function tUI(key) {
     return langData && langData.ui && langData.ui[key] ? langData.ui[key] : key;
 }
+function tRoute(route) {
+    return langData && langData.route && langData.route[route] ? langData.route[route] : route;
+}
 
-function renderStaticUI() {
-    // index.html所有h4
-    $("#container h4").each(function(){
-        var txt = $(this).text().trim();
-        if(txt==="Unit Selection") $(this).text(tUI('unitSelect'));
-        if(txt==="Parent Selection") $(this).text(tUI('parentSelect'));
-        if(txt==="Avatar Customization") $(this).text(tUI('avatarCustomization'));
-        if(txt==="Class Change Options") $(this).text(tUI('classChangeOptions'));
+function getTranslation(path) {
+    if (!langData || !path)
+        return null;
+    var parts = path.split(".");
+    var value = langData;
+    for (var i=0; i<parts.length; i++) {
+        if (value === undefined || value === null)
+            return null;
+        value = value[parts[i]];
+    }
+    return value;
+}
+
+function applyI18n(root) {
+    var rootNode = root;
+    if (root && root.nodeType === 9 && root.documentElement)
+        rootNode = root.documentElement;
+    $(rootNode).find("[data-i18n]").addBack("[data-i18n]").each(function() {
+        var key = $(this).attr("data-i18n");
+        var attr = $(this).attr("data-i18n-attr");
+        var value = getTranslation(key);
+        if (value === null || value === undefined)
+            return;
+        if (attr)
+            $(this).attr(attr, value);
+        else
+            $(this).text(value);
     });
-    $("#inheritance-title").text(tUI('inheritanceCalculator'));
-    // 角色选择label
-    $("label[for='unit-select']").text(tUI('unitSelect'));
-    // 基础、父母、祖父母
-    $("#base-select").prev('h4').text(tUI('baseSelect'));
-    $("#parent-select").prev('h4').text(tUI('parentSelect'));
-    $("#grandparent-select").prev('h4').text(tUI('grandparentSelect'));
-    // 额外选项
+}
+
+function renderExtraSelectOptions() {
     $("#extra-select option").each(function(i, opt){
         if(i===0) $(opt).text(tUI('extraSelect'));
         else {
@@ -51,63 +85,40 @@ function renderStaticUI() {
             if(val && !isNaN(val)) $(opt).text(val/5 + " (+" + val + " " + tUI('level') + ")");
         }
     });
-    // aptitude
-    $("#aptitude-check label, #aptitude-check span").text(tUI('aptitude'));
-    // Avatar Customization部分Boon/Bane文本
-    var avatarP = $("#avatar-custom > p");
-    if (avatarP.length) {
-        var html = avatarP.html();
-        html = html.replace(/Boon(\s*)/g, tUI('boon')+" ");
-        html = html.replace(/Bane(\s*)/g, tUI('bane')+" ");
-        avatarP.html(html);
-    }
-    // 下拉默认项
-    $("#boon-select").prev().contents().filter(function(){return this.nodeType===3;}).first().replaceWith(tUI('boon')+" ");
-    $("#bane-select").prev().contents().filter(function(){return this.nodeType===3;}).first().replaceWith(tUI('bane')+" ");
-    // 按钮
-    $("#add-seal").text(tUI('addSeal'));
-    $("#reset").text(tUI('reset'));
-    // 下拉默认项
-    $("#level-change-select option").first().text(tUI('levelSelect'));
-    $("#class-change-select option").first().text(tUI('classSelect'));
-    // 量表切换
-    $("#quantile-toggle-ui span").text(tUI('showQuantile'));
-    $("#quantile-toggle-ui label").each(function(i,el){
-        if(i===0) $(el).find('span').text(tUI('quantile50')||'50%');
-        if(i===1) $(el).find('span').text(tUI('quantile25')||'25%');
-        if(i===2) $(el).find('span').text(tUI('quantile75')||'75%');
+}
+
+function renderLanguageSwitcher() {
+    $(".lang-switcher-option").each(function() {
+        var lang = $(this).attr("data-lang-option");
+        var isActive = lang == currentLang;
+        $(this).toggleClass("is-active", isActive);
+        $(this).attr("aria-pressed", isActive ? "true" : "false");
     });
-    // 量表表头
-    $(".table-wrapper h4").each(function(i,el){
-        var txt = $(el).text();
-        if(txt.indexOf('Quantile')>-1) {
-            if(txt.indexOf('50')>-1) $(el).text(tUI('quantile50')+" " + tUI('quantileTable'));
-            if(txt.indexOf('25')>-1) $(el).text(tUI('quantile25')+" " + tUI('quantileTable'));
-            if(txt.indexOf('75')>-1) $(el).text(tUI('quantile75')+" " + tUI('quantileTable'));
-        }
-    });
-    // 热力图提示
-    $("#heatmap-info-panel .info-content").each(function(){
-        var txt = $(this).text();
-        if(txt.indexOf('将鼠标移到热力图上查看详细信息')>-1) $(this).text(tUI('heatmapTip'));
-        if(txt.indexOf('值:')>-1) $(this).html(tUI('value')+": "+$(this).html().split(':')[1]);
-        if(txt.indexOf('概率:')>-1) $(this).html(tUI('probability')+": "+$(this).html().split(':')[1]);
-        if(txt.indexOf('达到或超过此值的概率:')>-1) $(this).html(tUI('cumProbability')+": "+$(this).html().split(':')[1]);
-    });
-    $("#boon-label").text(tUI('boon'));
-    $("#bane-label").text(tUI('bane'));
+}
+
+function renderStaticUI() {
+    document.documentElement.lang = currentLang;
+    applyI18n(document);
+    document.title = tUI('pageTitle');
+    renderLanguageSwitcher();
+    renderExtraSelectOptions();
+    renderBaseSelect();
+    renderParentSelect();
+    renderGrandparentSelect();
+    renderBoonBaneSelect();
+    renderLevelClassSelect();
+}
+
+function switchLanguage(lang) {
+    if (!lang || lang == currentLang)
+        return;
+    savePreferredLanguage(lang);
+    window.location.reload();
 }
 
 // 在语言切换和初始化后调用
-$(document).on('change', '#lang-select', function() {
-    var lang = $(this).val();
-    loadLang(lang, function() {
-        renderStaticUI();
-        updateTable();
-        renderUnitSelect();
-        if (window.renderInheritancePanel)
-            window.renderInheritancePanel();
-    });
+$(document).on('click', '[data-lang-option]', function() {
+    switchLanguage($(this).attr('data-lang-option'));
 });
 
 // 角色选择下拉多语言渲染
@@ -122,7 +133,7 @@ function renderUnitSelect() {
         unitList[db.character[unit].route].push(unit);
     }
     for (var route in unitList) {
-        unitSelect.append($('<option>').text('---' + route + '---').prop('disabled', true));
+        unitSelect.append($('<option>').text('---' + tRoute(route) + '---').prop('disabled', true));
         for (var i = 0; i < unitList[route].length; i++)
             unitSelect.append($('<option>').val(unitList[route][i]).text(tChar(db.character[unitList[route][i]].name)));
     }
@@ -145,13 +156,21 @@ function renderBaseSelect() {
 function renderParentSelect() {
     var parentSelect = $('#parent-select');
     parentSelect.find('option').each(function(i, opt) {
-        if (i === 0) $(opt).text(tUI('parentSelect'));
+        if ($(opt).val() == "none") {
+            $(opt).text(tUI('parentSelect'));
+        } else if (db.character[$(opt).val()]) {
+            $(opt).text(tChar(db.character[$(opt).val()].name));
+        }
     });
 }
 function renderGrandparentSelect() {
     var grandparentSelect = $('#grandparent-select');
     grandparentSelect.find('option').each(function(i, opt) {
-        if (i === 0) $(opt).text(tUI('grandparentSelect'));
+        if ($(opt).val() == "none") {
+            $(opt).text(tUI('grandparentSelect'));
+        } else if (db.character[$(opt).val()]) {
+            $(opt).text(tChar(db.character[$(opt).val()].name));
+        }
     });
 }
 function renderBoonBaneSelect() {
@@ -199,22 +218,8 @@ $(document).ready(function() {
 	db.character.kamui.initialize($("#boon-select").val(), $("#bane-select").val());
 	for (var i=1; i<=20; i++)
 		$("#extra-select").append($("<option>").val(i*5).text(i + " (+" + i*5 + " levels)"));
-	$("#base-select").prop("disabled", true).empty().append($("<option/>").text("Select a base"));
+	$("#base-select").prop("disabled", true).empty().append($("<option/>").text(tUI('baseSelect')));
 	resetPanel();
-	
-	var unitList = {};
-	for (var unit in db.character) {
-		if (!unitList[db.character[unit].route])
-			unitList[db.character[unit].route] = [];
-		unitList[db.character[unit].route].push(unit);
-	}
-	
-	for (var route in unitList) {
-		var unitSelect = $("#unit-select");
-		unitSelect.append($("<option>").text("---" + route + "---").prop("disabled", true));
-		for (var i=0; i<unitList[route].length; i++)
-			unitSelect.append($("<option>").val(unitList[route][i]).text(db.character[unitList[route][i]].name));
-	}
 	
 	$("#boon-select").change(function() {
 		$("option.bane").prop("disabled", false);
@@ -264,7 +269,7 @@ $(document).ready(function() {
 			}else
 				resetPanel();
 		}else {
-			$("#base-select").prop("disabled", true).empty().append($("<option/>").text("Select a base"));
+			$("#base-select").prop("disabled", true).empty().append($("<option/>").text(tUI('baseSelect')));
 			resetPanel();
 		}
 		renderInheritancePanel();
@@ -356,7 +361,7 @@ $(document).ready(function() {
 		var classSet = calc.getAvaiableClassChange(this.value);
 		
 		if (classSet.masterSeal) {
-			classSelect.append($("<option/>").text("-----Master Seal-----").prop("disabled", true));
+			classSelect.append($("<option/>").text("-----" + tUI('masterSeal') + "-----").prop("disabled", true));
 			for (var c in classSet.masterSeal)
 				classSelect.append($("<option/>", {
 					text	: tClass(db.classes[c].name),
@@ -364,21 +369,21 @@ $(document).ready(function() {
 				}))
 		}
 		
-		classSelect.append($("<option/>").text("-----Heart Seal-----").prop("disabled", true));
+		classSelect.append($("<option/>").text("-----" + tUI('heartSeal') + "-----").prop("disabled", true));
 			for (var c in classSet.heartSeal)
 				classSelect.append($("<option/>", {
 					text	: tClass(db.classes[c].name),
 					value	: c,
 				}))
 				
-		classSelect.append($("<option/>").text("---Friendship/Partner Seal---").prop("disabled", true));
+		classSelect.append($("<option/>").text("---" + tUI('parallelSeal') + "---").prop("disabled", true));
 			for (var c in classSet.parallelSeal)
 				classSelect.append($("<option/>", {
 					text	: tClass(db.classes[c].name),
 					value	: c,
 				}))
 				
-		classSelect.append($("<option/>").text("-----Special Seal-----").prop("disabled", true));
+		classSelect.append($("<option/>").text("-----" + tUI('specialSeal') + "-----").prop("disabled", true));
 			for (var c in classSet.specialSeal)
 				classSelect.append($("<option/>", {
 					text	: tClass(db.classes[c].name),
@@ -402,8 +407,8 @@ $(document).ready(function() {
 	});
 	
 	function resetPanel() {
-		$("#level-change-select").prop("disabled", true).empty().append($("<option/>").text("Select a level"));
-		$("#class-change-select").prop("disabled", true).empty().append($("<option/>").text("Select a class"));
+		$("#level-change-select").prop("disabled", true).empty().append($("<option/>").text(tUI('levelSelect')));
+		$("#class-change-select").prop("disabled", true).empty().append($("<option/>").text(tUI('classSelect')));
 		$("#add-seal").attr("disabled", true);
 		$("#reset").attr("disabled", true);
 	}
@@ -1187,12 +1192,12 @@ $(document).ready(function() {
 				: (value <= mean ? "100.00%" : "0.00%");
 			infoPanel.html(`
 				<div class="info-title ${attr ? 'stat-' + attr : ''}">
-					${attr || ''} - Lv.${level} (${className})
+					${attr ? tStat(attr) : ''} - ${tUI('level')} ${level} (${className})
 				</div>
 				<div class="info-content">
-					<div>${tUI('value')||'值'}: ${value}</div>
-					<div>${tUI('probability')||'概率'}: ${formatProbability(probability)}</div>
-					<div>${tUI('cumProbability')||'达到或超过此值的概率'}: ${cumProb}</div>
+					<div>${tUI('value')}: ${value}</div>
+					<div>${tUI('probability')}: ${formatProbability(probability)}</div>
+					<div>${tUI('cumProbability')}: ${cumProb}</div>
 				</div>
 			`);
 			infoPanel.show();
@@ -1344,7 +1349,7 @@ $(document).ready(function() {
 		for (var attr in levelList[0][0].stat) {
 			var wrapper = $("<div/>").addClass("heatmap-wrapper");
 			wrapper.append($("<h4/>")
-				.text(tStat(attr) + " Growth Distribution")
+				.text(tStat(attr) + " " + tUI('growthDistribution'))
 				.addClass("stat-" + attr));
 			
 			var minVal = Infinity;
@@ -1447,7 +1452,7 @@ $(document).ready(function() {
 								rowData.push({
 									tier1Level: prevClassData.tier1Level,
 									tier2Level: prevClassData.tier2Level,
-									className: prevClassData.className + " (pre)",
+									className: tClass(prevClassData.className) + " (" + tUI('beforeChange') + ")",
 									data: prevClassData
 								});
 								totalRows++;
@@ -1459,7 +1464,7 @@ $(document).ready(function() {
 								rowData.push({
 									tier1Level: nextClassData.tier1Level,
 									tier2Level: nextClassData.tier2Level,
-									className: nextClassData.className + " (post)",
+									className: tClass(nextClassData.className) + " (" + tUI('afterChange') + ")",
 									data: nextClassData
 								});
 								totalRows++;
@@ -1472,7 +1477,7 @@ $(document).ready(function() {
 								rowData.push({
 									tier1Level: currentData.tier1Level,
 									tier2Level: currentData.tier2Level,
-									className: currentData.className,
+									className: tClass(currentData.className),
 									data: currentData
 								});
 								totalRows++;
@@ -1940,7 +1945,7 @@ function updateTable() {
 
 // 页面初始化加载默认中文
 $(function() {
-    loadLang('zh-CN', function() {
+    loadLang(getPreferredLanguage(), function() {
         renderStaticUI();
         renderUnitSelect();
         renderInheritancePanel();
